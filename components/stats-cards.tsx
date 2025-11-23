@@ -1,27 +1,56 @@
+'use client'
+
+import { useState, useEffect } from 'react'
 import { MessageCircle, Activity, Clock } from 'lucide-react'
+import { api, type StatsResponse } from '@/lib/api'
 
 export function StatsCards({ totalCalls }: { totalCalls: number }) {
+  const [statsData, setStatsData] = useState<StatsResponse | null>(null)
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    const fetchStats = async () => {
+      try {
+        setLoading(true)
+        const data = await api.getStats()
+        setStatsData(data)
+      } catch (error) {
+        console.error('Failed to fetch stats:', error)
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    fetchStats()
+    // Refresh every 30 seconds
+    const interval = setInterval(fetchStats, 30000)
+    return () => clearInterval(interval)
+  }, [])
+
+  // Calculate average response time (mock calculation based on efficiency)
+  const avgResponseTime = statsData ? (100 - parseFloat(statsData.efficiency)) / 10 : 0.8
+
   const stats = [
     {
       title: 'Jami murojaatlar',
-      value: totalCalls.toString(),
-      change: '+12%',
+      value: loading ? '...' : (statsData?.total_calls?.toString() || totalCalls.toString()),
+      change: statsData?.today_calls ? `Bugun: ${statsData.today_calls}` : '+12%',
       icon: MessageCircle,
       color: 'text-blue-500',
       bg: 'bg-blue-500/10'
     },
     {
-      title: 'Aktiv chatlar',
-      value: '24',
+      title: 'Samaradorlik',
+      value: loading ? '...' : (statsData?.efficiency || '92%'),
       change: 'Jonli',
       icon: Activity,
       color: 'text-green-500',
       bg: 'bg-green-500/10'
     },
     {
-      title: 'Kutish vaqti',
-      value: '0.8s',
-      change: '-15%',
+      title: 'O\'rtacha vaqt',
+      value: loading ? '...' : `${avgResponseTime.toFixed(1)}s`,
+      change: 'Optimal',
       icon: Clock,
       color: 'text-purple-500',
       bg: 'bg-purple-500/10'
