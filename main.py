@@ -36,12 +36,10 @@ app.add_middleware(
 class QuestionRequest(BaseModel):
     input: str
 
-# --- 1. MODELLAR ---
 print("Tizim ishga tushmoqda...")
 llm = ChatOpenAI(model="gpt-4o-mini", temperature=0.0) # 0.0 - Eng aniq rejim
 embeddings = OpenAIEmbeddings(model="text-embedding-3-small")
 
-# --- 2. BAZA ---
 def init_db():
     conn = sqlite3.connect(DB_PATH, check_same_thread=False)
     cursor = conn.cursor()
@@ -58,7 +56,6 @@ def init_db():
 
 init_db()
 
-# --- 3. RAG ---
 def initialize_rag():
     data_path = os.path.join(BASE_DIR, "data")
     if not os.path.exists(data_path): os.makedirs(data_path)
@@ -95,10 +92,8 @@ def initialize_rag():
 vector_db = initialize_rag()
 retriever = vector_db.as_retriever(search_kwargs={"k": 3})
 
-# --- 4. MANUAL TRANSLITERATOR (Majburiy Lotinlash) ---
 def force_to_latin(text):
     if not text: return ""
-    # Kirill -> Lotin xaritasi
     mapping = {
         "а": "a", "б": "b", "в": "v", "г": "g", "д": "d", "е": "e", "ё": "yo",
         "ж": "j", "з": "z", "и": "i", "й": "y", "к": "k", "л": "l", "м": "m",
@@ -118,9 +113,7 @@ def force_to_latin(text):
         result += mapping.get(char, char)
     return result
 
-# --- 5. PROMPTLAR ---
 
-# A) AI FILOLOG (Imlo va Sheva tuzatuvchi)
 grammar_prompt = ChatPromptTemplate.from_messages([
     ("system", 
      "VAZIFA: Berilgan o'zbekcha matnning imlo xatolarini tuzat va sheva so'zlarini adabiy tilga o'tkaz. \n"
@@ -136,7 +129,6 @@ grammar_prompt = ChatPromptTemplate.from_messages([
     ("human", "{text}")
 ])
 
-# B) DISPETCHER (Javob beruvchi)
 main_prompt = ChatPromptTemplate.from_messages([
     ("system", 
      "ROL: Sen O'zbekiston Ta'lim vazirligi dispetcherisan. \n"
@@ -146,7 +138,6 @@ main_prompt = ChatPromptTemplate.from_messages([
     ("human", "{input}")
 ])
 
-# --- 6. ENDPOINTLAR ---
 
 @app.get("/logs")
 async def get_logs():
@@ -162,20 +153,16 @@ async def get_logs():
 @app.post("/ask")
 async def ask_question(request: QuestionRequest):
     try:
-        # 1. Majburiy Lotinlash
         latin_input = force_to_latin(request.input)
 
-        # 2. Imlo tuzatish (Text input uchun ham)
         grammar_chain = grammar_prompt | llm
         clean_text = grammar_chain.invoke({"text": latin_input}).content
 
-        # 3. Javob olish
         docs = retriever.invoke(clean_text)
         context = "\n\n".join([doc.page_content for doc in docs])
         chain = main_prompt | llm
         raw_response = chain.invoke({"context": context, "input": clean_text}).content
         
-        # 4. Javobni lotinlashtirish
         final_response = force_to_latin(raw_response)
         
         conn = sqlite3.connect(DB_PATH, check_same_thread=False)
@@ -203,26 +190,23 @@ async def ask_voice(file: UploadFile = File(...)):
                 file=audio_file, 
                 prompt="Assalomu alaykum. Vazirlik, maktab, bog'cha. Bovotti, kerek. Sof o'zbek tili."
             )
-        # Whisper natijasini darhol Lotinlashtiramiz
+        
         raw_text = force_to_latin(transcription.text)
         print(f"Xom (Whisper): {raw_text}")
 
-        # 2. AI FILOLOG (Imlo va Sheva tuzatish)
         print("Imlo tuzatilmoqda...")
         grammar_chain = grammar_prompt | llm
         clean_text = grammar_chain.invoke({"text": raw_text}).content
         print(f"Toza matn: {clean_text}")
 
-        # 3. RAG + JAVOB
         docs = retriever.invoke(clean_text)
         context = "\n\n".join([doc.page_content for doc in docs])
         chain = main_prompt | llm
         raw_response = chain.invoke({"context": context, "input": clean_text}).content
         
-        # 4. JAVOBNI LOTINLASHTIRISH
+
         final_response = force_to_latin(raw_response)
 
-        # 5. LOG (Bazaga toza savol va toza javob yoziladi)
         conn = sqlite3.connect(DB_PATH, check_same_thread=False)
         cursor = conn.cursor()
         now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -243,16 +227,13 @@ async def get_stats():
         conn = sqlite3.connect(DB_PATH, check_same_thread=False)
         cursor = conn.cursor()
         
-        # 1. Jami murojaatlar soni
         cursor.execute("SELECT COUNT(*) FROM logs")
         total_calls = cursor.fetchone()[0]
         
-        # 2. Bugungi murojaatlar
         today = datetime.now().strftime("%Y-%m-%d")
         cursor.execute("SELECT COUNT(*) FROM logs WHERE timestamp LIKE ?", (f"{today}%",))
         today_calls = cursor.fetchone()[0]
         
-        # 3. Tejalgan mablag' (Unit Economics asosida: 3500 - 300 = 3200 so'm tejov)
         saved_money = total_calls * 3200
         
         conn.close()
@@ -260,7 +241,7 @@ async def get_stats():
             "total_calls": total_calls,
             "today_calls": today_calls,
             "saved_money": f"{saved_money:,} so'm",
-            "efficiency": "92%" # Sun'iy ravishda aniqlik ko'rsatkichi
+            "efficiency": "92%" 
         }
     except Exception as e:
         return {"error": str(e)}
@@ -282,18 +263,15 @@ async def text_to_speech(request: QuestionRequest):
 async def admin_stats():
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
-    
-    # Jami murojaatlar
+
     cursor.execute("SELECT COUNT(*) FROM logs")
     count = cursor.fetchone()[0]
     
-    # O'rtacha reyting
     cursor.execute("SELECT AVG(rating) FROM logs WHERE rating > 0")
     avg_rating = cursor.fetchone()[0] or 0
     
     conn.close()
     
-    # Unit Economics bo'yicha tejalgan pul: (3500 - 300) = 3200 so'm bitta call uchun
     saved_money = count * 3200
     
     return {
